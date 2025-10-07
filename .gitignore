@@ -1,0 +1,9 @@
+node_modules/
+*.log
+*.env
+*.env.*
+.DS_Store
+backend/supabase/.branches/
+backend/supabase/.temp/
+backend/supabase/.cache/
+.idea/
