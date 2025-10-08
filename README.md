@@ -25,6 +25,11 @@ Supabase services are available at `http://127.0.0.1:54321` (API) and `http://12
 - Capture schema changes with Supabase migrations in `backend/supabase/migrations/`.
 - Mirror successful patterns from the original Crossroads repo while keeping the codebase lean and documented.
 
+## Testing
+- Duplicate `backend/.env.test.example` to `backend/.env.test` and adjust credentials if your local Supabase stack differs.
+- Start Supabase locally before running tests: `cd backend && npx supabase start`.
+- Execute the integration suite with `npm test`. Set `SKIP_DB_TESTS=1` or `SKIP_HTTP_TESTS=1` if you temporarily want to bypass database or network-bound specs.
+
 ## Roadmap Snapshot
 - Model core portfolio entities (accounts, holdings, transactions) in Supabase.
 - Build interactive charts for asset allocation and performance.

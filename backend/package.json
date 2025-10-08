@@ -6,13 +6,20 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "db:reset": "npx supabase db reset"
+    "test": "cross-env NODE_ENV=test jest --runInBand",
+    "test:watch": "cross-env NODE_ENV=test jest --watch"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  },
   "devDependencies": {
+    "cross-env": "^7.0.3",
+    "jest": "^29.7.0",
+    "pg": "^8.11.5",
+    "supertest": "^6.3.4",
     "supabase": "^2.48.3"
   }
 }
