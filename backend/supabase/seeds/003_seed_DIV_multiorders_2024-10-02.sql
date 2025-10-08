@@ -1,12 +1,19 @@
 -- 20251007_seed_DIV_multiorders_2024-10-02.sql
 BEGIN;
 
+-- ✅ Precondities: vereiste currencies bestaan
 DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM public.currencies WHERE code = 'CAD') THEN
-        RAISE EXCEPTION 'Seed precondition: currency CAD ontbreekt in public.currencies';
-    END IF;
-END $$;
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM public.currencies WHERE code = 'CAD') THEN
+            RAISE EXCEPTION 'Seed precondition: currency CAD ontbreekt in public.currencies';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM public.currencies WHERE code = 'EUR') THEN
+            RAISE EXCEPTION 'Seed precondition: currency EUR ontbreekt in public.currencies';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM public.currencies WHERE code = 'USD') THEN
+            RAISE EXCEPTION 'Seed precondition: currency USD ontbreekt in public.currencies';
+        END IF;
+    END $$;
 
 -- 0) BASIS: user + broker + account (als je ze nog niet had)
 INSERT INTO public.users (email, name, base_currency)
@@ -22,7 +29,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.locations (user_id, broker_id, name, type, base_currency)
 SELECT u.id, b.id, 'DeGiro - jonasdevries', 'broker', 'EUR'
 FROM public.users u
-         JOIN public.brokers b ON b.user_id = u.id AND b.name='DeGiro'
+         JOIN public.brokers b ON b.user_id=u.id AND b.name='DeGiro'
 WHERE u.email='jonas@good-it.be'
 ON CONFLICT DO NOTHING;
 
@@ -42,6 +49,12 @@ INSERT INTO public.listings (asset_id, mic, ticker_local, quote_ccy)
 SELECT a.id, 'NEOE', 'DIV', 'CAD' FROM public.assets a
 WHERE a.unique_symbol='CA2553311002'
 ON CONFLICT (asset_id, mic) DO NOTHING;
+
+-- 1.5) FX rates voor 2024-10-02 (canoniek; inverse wordt on-the-fly afgeleid)
+--     We gebruiken dezelfde dag/timestamp als de orders.
+--     EUR/USD = 1.25  en  CAD/EUR = 0.68  → CAD/USD via pivot = 0.68 * 1.25 = 0.85
+SELECT public.fx_rates_upsert('EUR','USD', '2024-10-02T00:00:00Z', 1.2500000000);
+SELECT public.fx_rates_upsert('CAD','EUR', '2024-10-02T00:00:00Z', 0.6800000000);
 
 -- 2) Orders (allemaal 2024-10-02; price in CAD; fee in EUR via AutoFX)
 --    Kolommen: (mic, qty, price_cad, fee_eur)
@@ -70,7 +83,7 @@ SELECT
     CASE o.mic WHEN 'XTSE' THEN b.listing_xtse_id ELSE b.listing_neoe_id END AS listing_id,
     'buy'::public.txn_type,
     o.qty, o.price_cad, o.fee_eur, 'EUR',
-    '2024-10-02'::timestamptz,
+    '2024-10-02T00:00:00Z'::timestamptz,
     'Seed: multi-order buy DIV'
 FROM base b
          CROSS JOIN (
@@ -89,5 +102,13 @@ FROM base b
         ('XTSE',  9900,  3.00 , 49.89)
 ) AS o(mic, qty, price_cad, fee_eur)
 ON CONFLICT DO NOTHING;
+
+
+-- EUR↔CAD op 2024-10-02 16:54:32Z
+-- We slaan slechts één rij op (canoniek via LEAST/GREATEST in fx_rates_upsert).
+-- Richting EUR→CAD of CAD→EUR wordt bij gebruik on-the-fly bepaald (eventueel 1/rate).
+SELECT public.fx_rates_upsert('EUR','CAD', '2024-10-02T16:54:32Z', 1.4883000000);
+
+
 
 COMMIT;

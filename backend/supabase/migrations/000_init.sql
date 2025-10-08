@@ -260,71 +260,185 @@ CREATE TABLE public.asset_prices (
 CREATE INDEX asset_prices_asset_ts_desc_idx
     ON public.asset_prices(asset_id, ts DESC);
 
----------------------------
--- FX Rates (+ inverse trigger)
----------------------------
-CREATE TABLE public.fx_rates (
-                                 ccy_from char(3) NOT NULL,
-                                 ccy_to   char(3) NOT NULL,
-                                 ts       timestamptz NOT NULL,
-                                 rate     numeric(20,10) NOT NULL,
-                                 PRIMARY KEY (ccy_from, ccy_to, ts)
+
+-- ============================================================
+-- FX rates schema (from scratch) — no triggers, canonical storage
+-- ============================================================
+
+-- 1) Basistabel (canonieke opslag)
+create table if not exists public.fx_rates (
+                                               ccy_from text not null check (ccy_from ~ '^[A-Z]{3}$'),
+                                               ccy_to   text not null check (ccy_to   ~ '^[A-Z]{3}$'),
+                                               ts       timestamptz not null,
+                                               rate     numeric(20,10) not null check (rate > 0),
+    -- geen zelf-paren
+                                               constraint fx_rates_ccy_diff_chk check (ccy_from <> ccy_to),
+    -- canonieke orde afdwingen: kleinste alfabetisch links
+                                               constraint fx_rates_canonical_chk check (ccy_from < ccy_to),
+    -- unieke sleutel per (paar, tijd)
+                                               constraint fx_rates_pk primary key (ccy_from, ccy_to, ts)
 );
 
-ALTER TABLE public.fx_rates
-    ADD CONSTRAINT fx_rates_ccy_from_fk FOREIGN KEY (ccy_from) REFERENCES public.currencies(code),
-    ADD CONSTRAINT fx_rates_ccy_to_fk   FOREIGN KEY (ccy_to)   REFERENCES public.currencies(code),
-    ADD CONSTRAINT fx_rates_ccy_diff_chk CHECK (ccy_from <> ccy_to),
-    ADD CONSTRAINT fx_rates_rate_pos_chk CHECK (rate > 0),
-    ADD CONSTRAINT fx_rates_upper_chk CHECK (
-        ccy_from = UPPER(ccy_from) AND ccy_to = UPPER(ccy_to)
-        );
+-- 2) Indexen (PK dekt de meeste lookups; extra ts-index kan nuttig zijn)
+create index if not exists fx_rates_ts_idx on public.fx_rates (ts);
 
-CREATE INDEX fx_rates_pair_ts_desc_idx
-    ON public.fx_rates(ccy_from, ccy_to, ts DESC);
+-- 3) Convenience upsert: accepteert elke volgorde, schrijft canoniek
+--    (Geen triggers nodig; gebruik deze functie vanuit je app/tests.)
+-- Replace fx_rates_upsert to invert when normalizing to canonical order
+create or replace function public.fx_rates_upsert(
+    p_from text,
+    p_to   text,
+    p_ts   timestamptz,
+    p_rate numeric
+) returns void
+    language plpgsql
+    set search_path = public
+as $$
+declare
+    f text := least(p_from, p_to);
+    t text := greatest(p_from, p_to);
+    r numeric := p_rate;
+begin
+    -- If input is provided as the non-canonical direction, store the inverse
+    if p_from > p_to then
+        r := 1 / r;
+    end if;
 
--- ---------------------------------------------------------------
--- Inverse upsert trigger: alleen voor canonieke richting (from < to)
--- ---------------------------------------------------------------
-
--- Verwijder oude trigger (indien aanwezig)
-DROP TRIGGER IF EXISTS trg_fx_inverse ON public.fx_rates;
-
--- Vervang functie door niet-recursieve variant
-CREATE OR REPLACE FUNCTION public.fx_rates_upsert_inverse()
-    RETURNS trigger
-    LANGUAGE plpgsql
-AS $$
-BEGIN
-    -- Guardrails
-    IF NEW.rate IS NULL OR NEW.rate = 0 THEN
-        RETURN NEW;  -- niets te doen / inverse niet definieerbaar
-    END IF;
-
-    -- Upsert inverse koers
-    INSERT INTO public.fx_rates (ccy_from, ccy_to, ts, rate)
-    VALUES (NEW.ccy_to, NEW.ccy_from, NEW.ts, 1.0 / NEW.rate::numeric)
-    ON CONFLICT (ccy_from, ccy_to, ts)
-        DO UPDATE SET rate = EXCLUDED.rate;
-
-    RETURN NEW;
-END;
+    insert into public.fx_rates (ccy_from, ccy_to, ts, rate)
+    values (f, t, p_ts, r)
+    on conflict (ccy_from, ccy_to, ts)
+        do update set rate = excluded.rate;
+end;
 $$;
 
--- Nieuwe trigger: alleen afvuren als canoniek (vergelijk als text!)
-CREATE TRIGGER trg_fx_inverse
-    AFTER INSERT OR UPDATE ON public.fx_rates
-    FOR EACH ROW
-    WHEN (NEW.ccy_from::text < NEW.ccy_to::text)
-EXECUTE FUNCTION public.fx_rates_upsert_inverse();
 
+comment on function public.fx_rates_upsert(text,text,timestamptz,numeric)
+    is 'Upsert FX rate; normaliseert volgorde met LEAST/GREATEST en bewaart 1 rij per paar+ts.';
 
--- Handige view: laatste koersen per paar
-CREATE OR REPLACE VIEW public.fx_rates_latest AS
-SELECT DISTINCT ON (ccy_from, ccy_to)
-    ccy_from, ccy_to, ts, rate
-FROM public.fx_rates
-ORDER BY ccy_from, ccy_to, ts DESC;
+-- 4) fx_convert: gebruikt canonieke opslag en berekent inverse on-the-fly
+--    p_pivot is optioneel; bij pivot worden beide benen analoog behandeld.
+create or replace function public.fx_convert(
+    p_amount numeric,
+    p_from   text,
+    p_to     text,
+    p_ts     timestamptz,
+    p_pivot  text default null
+) returns numeric
+    language plpgsql
+    set search_path = public
+as $$
+declare
+    -- helpers om canoniek op te vragen
+    a text := p_from;
+    b text := p_to;
+
+    r_pair numeric;   -- rate voor (a,b) op ts (canoniek opgehaald)
+    r_leg1 numeric;   -- rate voor (from -> pivot)
+    r_leg2 numeric;   -- rate voor (pivot -> to)
+begin
+    if p_amount is null then
+        raise exception 'Amount is NULL';
+    end if;
+
+    if a = b then
+        return p_amount;
+    end if;
+
+    -- ===== Direct / inverse voor (from,to)
+    select rate into r_pair
+    from public.fx_rates
+    where ccy_from = least(a,b)
+      and ccy_to   = greatest(a,b)
+      and ts       = p_ts;
+
+    if r_pair is not null then
+        if a < b then
+            -- richting in opslag is a->b (zelfde als from->to)
+            return p_amount * r_pair;
+        else
+            -- richting in opslag is b->a; inverse toepassen
+            return p_amount * (1 / r_pair);
+        end if;
+    end if;
+
+    -- ===== Pivot path (optioneel)
+    if p_pivot is not null then
+        -- been 1: from -> pivot
+        select rate into r_leg1
+        from public.fx_rates
+        where ccy_from = least(p_from, p_pivot)
+          and ccy_to   = greatest(p_from, p_pivot)
+          and ts       = p_ts;
+
+        if r_leg1 is not null then
+            if p_from > p_pivot then
+                r_leg1 := 1 / r_leg1; -- opgeslagen als pivot->from, wij willen from->pivot
+            end if;
+        end if;
+
+        -- been 2: pivot -> to
+        select rate into r_leg2
+        from public.fx_rates
+        where ccy_from = least(p_pivot, p_to)
+          and ccy_to   = greatest(p_pivot, p_to)
+          and ts       = p_ts;
+
+        if r_leg2 is not null then
+            if p_pivot > p_to then
+                r_leg2 := 1 / r_leg2; -- opgeslagen als to->pivot, wij willen pivot->to
+            end if;
+        end if;
+
+        if r_leg1 is not null and r_leg2 is not null then
+            return p_amount * r_leg1 * r_leg2;
+        end if;
+    end if;
+
+    raise exception 'FX missing: %->% at % (pivot=%)', p_from, p_to, p_ts, coalesce(p_pivot,'∅');
+end;
+$$;
+
+comment on function public.fx_convert(numeric,text,text,timestamptz,text)
+    is 'Converteert bedrag op ts. Gebruikt canonieke opslag (ccy_from<ccy_to), inverse on-the-fly en optionele pivot.';
+
+-- 5) Views: "latest" per paar (canoniek) en "expanded" (beide richtingen zichtbaar)
+
+-- 5.1: nieuwste rij per canoniek paar
+create or replace view public.fx_rates_latest_unordered as
+with latest as (
+    select ccy_from, ccy_to, max(ts) as ts
+    from public.fx_rates
+    group by ccy_from, ccy_to
+)
+select r.ccy_from, r.ccy_to, r.ts, r.rate
+from latest l
+         join public.fx_rates r
+              on r.ccy_from = l.ccy_from
+                  and r.ccy_to   = l.ccy_to
+                  and r.ts       = l.ts;
+
+comment on view public.fx_rates_latest_unordered
+    is 'Laatste koersen per canoniek paar (ccy_from<ccy_to).';
+
+-- 5.2: expanded: toont beide richtingen zonder inverse fysiek op te slaan
+create or replace view public.fx_rates_latest_expanded as
+select ccy_from, ccy_to, ts, rate
+from public.fx_rates_latest_unordered
+union all
+select ccy_to as ccy_from, ccy_from as ccy_to, ts, (1/rate) as rate
+from public.fx_rates_latest_unordered;
+
+comment on view public.fx_rates_latest_expanded
+    is 'Laatste koersen in beide richtingen; inverse wordt afgeleid als 1/rate.';
+
+-- ============================================================
+-- Gebruikstips:
+-- - Schrijf met: select public.fx_rates_upsert('EUR','USD', '2024-10-02T00:00Z', 1.25);
+-- - Lees/latest (canoniek): select * from public.fx_rates_latest_unordered;
+-- - Lees/latest (beide richtingen): select * from public.fx_rates_latest_expanded;
+-- - Converteer: select public.fx_convert(100, 'EUR','USD', '2024-10-02T00:00Z', 'EUR');
+-- ============================================================
+
 
 
 

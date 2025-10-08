@@ -1,230 +1,114 @@
+// backend/tests/fx_rates.spec.js
 const { getPool, closePool } = require('../helpers/db');
 
 const skipFxTests = process.env.SKIP_DB_TESTS === '1';
 const describeIfFx = skipFxTests ? describe.skip : describe;
 
 if (skipFxTests) {
-  console.warn(
-    'Skipping FX rate specs because SKIP_DB_TESTS=1. Start Supabase locally and rerun to execute them.'
-  );
+    console.warn(
+        'Skipping FX rate specs because SKIP_DB_TESTS=1. Start Supabase locally and rerun to execute them.'
+    );
 }
 
 const TOLERANCE = 1e-9;
-const FROM = 'EUR';
-const TO = 'USD';
-const RATE = 1.23456789;
 
-describeIfFx('FX inverse trigger (canonieke richting)', () => {
-  const insertedTimestamps = new Set();
+describeIfFx('FX convert & latest (canonical, no triggers)', () => {
+    const insertedTimestamps = new Set();
 
-  beforeAll(async () => {
-    const pool = getPool();
-    const { rows: curRows } = await pool.query(
-      `select code
-       from public.currencies
-       where code in ($1, $2)`,
-      [FROM, TO]
-    );
-
-    const missing = [FROM, TO].filter(
-      (code) => !curRows.find((row) => row.code === code)
-    );
-
-    if (missing.length) {
-      throw new Error(
-        `Missing currencies required for FX test: ${missing.join(', ')}`
-      );
-    }
-  });
-
-  afterAll(async () => {
-    const pool = getPool();
-
-    if (insertedTimestamps.size > 0) {
-      const timestamps = Array.from(insertedTimestamps);
-
-      await pool.query(
-        `delete from public.fx_rates
-         where (
-           (ccy_from = $1 and ccy_to = $2)
-           or (ccy_from = $2 and ccy_to = $1)
-         )
-         and ts = any($3::timestamptz[])`,
-        [FROM, TO, timestamps]
-      );
-    }
-
-    await closePool();
-  });
-
-  it('maakt inverse koers aan en werkt latest view bij', async () => {
-    const pool = getPool();
-    const ts = new Date().toISOString();
-    insertedTimestamps.add(ts);
-
-    await pool.query(
-      `insert into public.fx_rates (ccy_from, ccy_to, ts, rate)
-       values ($1, $2, $3, $4)
-       on conflict (ccy_from, ccy_to, ts)
-       do update set rate = excluded.rate`,
-      [FROM, TO, ts, RATE]
-    );
-
-    const { rows: directRows } = await pool.query(
-      `select ccy_from, ccy_to, ts, rate
-       from public.fx_rates
-       where ccy_from = $1
-         and ccy_to = $2
-         and ts = $3`,
-      [FROM, TO, ts]
-    );
-
-    const { rows: inverseRows } = await pool.query(
-      `select ccy_from, ccy_to, ts, rate
-       from public.fx_rates
-       where ccy_from = $1
-         and ccy_to = $2
-         and ts = $3`,
-      [TO, FROM, ts]
-    );
-
-    expect(directRows).toHaveLength(1);
-    expect(inverseRows).toHaveLength(1);
-
-    const rateDirect = Number(directRows[0].rate);
-    const rateInverse = Number(inverseRows[0].rate);
-    const expectedInverse = 1 / RATE;
-
-    expect(Math.abs(rateDirect - RATE)).toBeLessThan(TOLERANCE);
-    expect(Math.abs(rateInverse - expectedInverse)).toBeLessThan(TOLERANCE);
-
-    const { rows: latestDirect } = await pool.query(
-      `select ccy_from, ccy_to, ts, rate
-       from public.fx_rates_latest
-       where ccy_from = $1
-         and ccy_to = $2`,
-      [FROM, TO]
-    );
-
-    const { rows: latestInverse } = await pool.query(
-      `select ccy_from, ccy_to, ts, rate
-       from public.fx_rates_latest
-       where ccy_from = $1
-         and ccy_to = $2`,
-      [TO, FROM]
-    );
-
-    expect(latestDirect).toHaveLength(1);
-    expect(latestInverse).toHaveLength(1);
-    expect(new Date(latestDirect[0].ts).toISOString()).toBe(ts);
-    expect(new Date(latestInverse[0].ts).toISOString()).toBe(ts);
-
-    const ts2 = new Date(Date.parse(ts) + 1000).toISOString();
-    const rate2 = 1.25;
-    insertedTimestamps.add(ts2);
-
-    await pool.query(
-      `insert into public.fx_rates (ccy_from, ccy_to, ts, rate)
-       values ($1, $2, $3, $4)
-       on conflict (ccy_from, ccy_to, ts)
-       do update set rate = excluded.rate`,
-      [FROM, TO, ts2, rate2]
-    );
-
-    const { rows: inverseUpdated } = await pool.query(
-      `select ts, rate
-       from public.fx_rates
-       where ccy_from = $1
-         and ccy_to = $2
-         and ts = $3`,
-      [TO, FROM, ts2]
-    );
-
-    expect(inverseUpdated).toHaveLength(1);
-    const expectedInverse2 = 1 / rate2;
-    expect(Math.abs(Number(inverseUpdated[0].rate) - expectedInverse2)).toBeLessThan(
-      TOLERANCE
-    );
-
-    const { rows: latestDirect2 } = await pool.query(
-      `select ts, rate
-       from public.fx_rates_latest
-       where ccy_from = $1
-         and ccy_to = $2`,
-      [FROM, TO]
-    );
-
-    const { rows: latestInverse2 } = await pool.query(
-      `select ts, rate
-       from public.fx_rates_latest
-       where ccy_from = $1
-         and ccy_to = $2`,
-      [TO, FROM]
-    );
-
-    expect(new Date(latestDirect2[0].ts).toISOString()).toBe(ts2);
-    expect(new Date(latestInverse2[0].ts).toISOString()).toBe(ts2);
-  });
-
-    it('triggert NIET bij niet-canonieke richting (USD/EUR)', async () => {
+    beforeAll(async () => {
         const pool = getPool();
-
-        // Niet-canoniek: USD > EUR, dus NEW.ccy_from < NEW.ccy_to is FALSE → trigger vuurt niet
-        const ts = new Date().toISOString();
-        insertedTimestamps.add(ts);
-
-        // Insert USD/EUR (niet-canoniek)
-        await pool.query(
-            `insert into public.fx_rates (ccy_from, ccy_to, ts, rate)
-     values ($1, $2, $3, $4)
-     on conflict (ccy_from, ccy_to, ts)
-     do update set rate = excluded.rate`,
-            [TO, FROM, ts, RATE] // TO='USD', FROM='EUR'
+        const { rows: curRows } = await pool.query(
+            `select code from public.currencies where code in ('EUR','USD','CAD')`
         );
-
-        // Direct (USD/EUR) moet bestaan
-        const { rows: directRows } = await pool.query(
-            `select ccy_from, ccy_to, ts, rate
-     from public.fx_rates
-     where ccy_from = $1
-       and ccy_to = $2
-       and ts = $3`,
-            [TO, FROM, ts]
-        );
-        expect(directRows).toHaveLength(1);
-
-        // Inverse (EUR/USD) op exact dezelfde ts mag NIET automatisch bestaan
-        const { rows: inverseRows } = await pool.query(
-            `select ccy_from, ccy_to, ts, rate
-     from public.fx_rates
-     where ccy_from = $1
-       and ccy_to = $2
-       and ts = $3`,
-            [FROM, TO, ts]
-        );
-        expect(inverseRows).toHaveLength(0);
-
-        // Latest view voor USD/EUR wijst naar deze ts
-        const { rows: latestNonCanonical } = await pool.query(
-            `select ts, rate
-     from public.fx_rates_latest
-     where ccy_from = $1
-       and ccy_to = $2`,
-            [TO, FROM]
-        );
-        expect(latestNonCanonical).toHaveLength(1);
-        // latest mag >= ts zijn; belangrijkste zijn onderstaande checks:
-        expect(new Date(latestNonCanonical[0].ts).getTime())
-            .toBeGreaterThanOrEqual(new Date(ts).getTime());
-
-
-        expect(directRows).toHaveLength(1);
-        expect(inverseRows).toHaveLength(0);
-
-
-
-        // Let op: voor EUR/USD bestaat mogelijk een oudere koers uit andere seeds/tests.
-        // We asserten enkel dat er GEEN record is op déze ts (reeds gecheckt hierboven).
+        const needed = ['EUR', 'USD', 'CAD'];
+        const missing = needed.filter((c) => !curRows.find((r) => r.code === c));
+        if (missing.length) {
+            throw new Error(`Missing currencies required for FX test: ${missing.join(', ')}`);
+        }
     });
 
+    afterAll(async () => {
+        const pool = getPool();
+
+        if (insertedTimestamps.size > 0) {
+            const timestamps = Array.from(insertedTimestamps);
+
+            // Canonieke opslag betekent: EUR/USD zit als (EUR,USD) in de tabel.
+            await pool.query(
+                `delete from public.fx_rates
+                 where ccy_from='EUR' and ccy_to='USD' and ts = any($1::timestamptz[])`,
+                [timestamps]
+            );
+        }
+
+        await closePool();
+    });
+
+    it('fx_convert gebruikt inverse on-the-fly wanneer alleen to->from is aangeleverd (via upsert)', async () => {
+        const pool = getPool();
+        const t = new Date().toISOString();
+        insertedTimestamps.add(t);
+
+        // Alleen USD->EUR aanleveren @ 0.8; upsert normaliseert + inverteert naar (EUR->USD=1.25)
+        await pool.query(
+            `select public.fx_rates_upsert($1,$2,$3,$4)`,
+            ['USD','EUR', t, 0.8000000000]
+        );
+
+        const { rows } = await pool.query(
+            `select public.fx_convert(100::numeric, 'EUR','USD',$1,'EUR') as out`,
+            [t]
+        );
+        expect(Number(rows[0].out)).toBeCloseTo(125, 9);
+    });
+
+    it('latest expanded levert beide richtingen; newest wins per paar', async () => {
+        const pool = getPool();
+
+        // Schone lei voor EUR/USD
+        await pool.query(
+            `delete from public.fx_rates where ccy_from='EUR' and ccy_to='USD'`
+        );
+
+        const base = new Date('2024-10-02T00:00:00.000Z');
+        const t_old = new Date(base.getTime() + 1000).toISOString(); // 00:00:01Z
+        const t_new = new Date(base.getTime() + 5000).toISOString(); // 00:00:05Z
+        insertedTimestamps.add(t_old);
+        insertedTimestamps.add(t_new);
+
+        // Oudere USD->EUR 1.10 → wordt opgeslagen als (EUR->USD ~= 0.9090909091)
+        await pool.query(
+            `select public.fx_rates_upsert($1,$2,$3,$4)`,
+            ['USD','EUR', t_old, 1.1000000000]
+        );
+
+        // Check expanded: moet EUR->USD tonen met 1/1.10 op t_old
+        let { rows: oldEurUsd } = await pool.query(
+            `select ts, rate from public.fx_rates_latest_expanded
+       where ccy_from='EUR' and ccy_to='USD'`
+        );
+        expect(new Date(oldEurUsd[0].ts).toISOString()).toBe(t_old);
+        expect(Number(oldEurUsd[0].rate)).toBeCloseTo(1/1.10, 10);
+
+        // Nieuwere EUR->USD (1.25)
+        await pool.query(
+            `select public.fx_rates_upsert($1,$2,$3,$4)`,
+            ['EUR','USD', t_new, 1.2500000000]
+        );
+
+        // Expanded moet nu t_new tonen voor beide richtingen
+        const { rows: eurUsdNew } = await pool.query(
+            `select ts, rate from public.fx_rates_latest_expanded
+       where ccy_from='EUR' and ccy_to='USD'`
+        );
+        expect(new Date(eurUsdNew[0].ts).toISOString()).toBe(t_new);
+        expect(Number(eurUsdNew[0].rate)).toBeCloseTo(1.25, 10);
+
+        const { rows: usdEurNew } = await pool.query(
+            `select ts, rate from public.fx_rates_latest_expanded
+             where ccy_from='USD' and ccy_to='EUR'`
+        );
+        expect(new Date(usdEurNew[0].ts).toISOString()).toBe(t_new);
+        expect(Number(usdEurNew[0].rate)).toBeCloseTo(1/1.25, 10);
+    });
 });
