@@ -165,4 +165,66 @@ describeIfFx('FX inverse trigger (canonieke richting)', () => {
     expect(new Date(latestDirect2[0].ts).toISOString()).toBe(ts2);
     expect(new Date(latestInverse2[0].ts).toISOString()).toBe(ts2);
   });
+
+    it('triggert NIET bij niet-canonieke richting (USD/EUR)', async () => {
+        const pool = getPool();
+
+        // Niet-canoniek: USD > EUR, dus NEW.ccy_from < NEW.ccy_to is FALSE → trigger vuurt niet
+        const ts = new Date().toISOString();
+        insertedTimestamps.add(ts);
+
+        // Insert USD/EUR (niet-canoniek)
+        await pool.query(
+            `insert into public.fx_rates (ccy_from, ccy_to, ts, rate)
+     values ($1, $2, $3, $4)
+     on conflict (ccy_from, ccy_to, ts)
+     do update set rate = excluded.rate`,
+            [TO, FROM, ts, RATE] // TO='USD', FROM='EUR'
+        );
+
+        // Direct (USD/EUR) moet bestaan
+        const { rows: directRows } = await pool.query(
+            `select ccy_from, ccy_to, ts, rate
+     from public.fx_rates
+     where ccy_from = $1
+       and ccy_to = $2
+       and ts = $3`,
+            [TO, FROM, ts]
+        );
+        expect(directRows).toHaveLength(1);
+
+        // Inverse (EUR/USD) op exact dezelfde ts mag NIET automatisch bestaan
+        const { rows: inverseRows } = await pool.query(
+            `select ccy_from, ccy_to, ts, rate
+     from public.fx_rates
+     where ccy_from = $1
+       and ccy_to = $2
+       and ts = $3`,
+            [FROM, TO, ts]
+        );
+        expect(inverseRows).toHaveLength(0);
+
+        // Latest view voor USD/EUR wijst naar deze ts
+        const { rows: latestNonCanonical } = await pool.query(
+            `select ts, rate
+     from public.fx_rates_latest
+     where ccy_from = $1
+       and ccy_to = $2`,
+            [TO, FROM]
+        );
+        expect(latestNonCanonical).toHaveLength(1);
+        // latest mag >= ts zijn; belangrijkste zijn onderstaande checks:
+        expect(new Date(latestNonCanonical[0].ts).getTime())
+            .toBeGreaterThanOrEqual(new Date(ts).getTime());
+
+
+        expect(directRows).toHaveLength(1);
+        expect(inverseRows).toHaveLength(0);
+
+
+
+        // Let op: voor EUR/USD bestaat mogelijk een oudere koers uit andere seeds/tests.
+        // We asserten enkel dat er GEEN record is op déze ts (reeds gecheckt hierboven).
+    });
+
 });
