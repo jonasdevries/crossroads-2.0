@@ -1,5 +1,5 @@
-// backend/tests/fx_rates.spec.js
-const { getPool, closePool } = require('../helpers/db');
+// backend/tests/fx_rates.int.spec.js
+const { getPool, closePool } = require('../../helpers/db');
 
 const skipFxTests = process.env.SKIP_DB_TESTS === '1';
 const describeIfFx = skipFxTests ? describe.skip : describe;

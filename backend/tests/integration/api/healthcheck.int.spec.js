@@ -1,5 +1,5 @@
 const request = require('supertest');
-const { createServer } = require('../../index');
+const { createServer } = require('../../../index');
 
 const skipHttpTests = process.env.SKIP_HTTP_TESTS === '1';
 const describeIfHttp = skipHttpTests ? describe.skip : describe;

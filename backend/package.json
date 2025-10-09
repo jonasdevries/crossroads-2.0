@@ -7,7 +7,12 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "test": "cross-env NODE_ENV=test jest --runInBand",
-    "test:watch": "cross-env NODE_ENV=test jest --watch"
+    "test:unit": "cross-env NODE_ENV=test SKIP_DB_TESTS=1 jest --runInBand tests/unit",
+    "test:integration": "cross-env NODE_ENV=test jest --runInBand tests/integration",
+    "test:db": "cross-env NODE_ENV=test jest --runInBand tests/integration/db",
+    "test:api": "cross-env NODE_ENV=test jest --runInBand tests/integration/api",
+    "test:watch": "cross-env NODE_ENV=test jest --watch",
+    "test:db:commodities": "cross-env NODE_ENV=test jest --runInBand tests/integration/db/commodities.int.spec.js"
   },
   "keywords": [],
   "author": "",

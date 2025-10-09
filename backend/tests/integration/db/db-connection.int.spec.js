@@ -1,4 +1,4 @@
-const { getPool, closePool } = require('../helpers/db');
+const { getPool, closePool } = require('../../helpers/db');
 
 const skipDbTests = process.env.SKIP_DB_TESTS === '1';
 const describeIfDb = skipDbTests ? describe.skip : describe;
