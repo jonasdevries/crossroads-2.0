@@ -1,4 +1,4 @@
-import {closePool, getPool} from "../../helpers/db.js"
+import {closePool, getPool} from "../helpers/db.js"
 
 const skipDbTests = process.env.SKIP_DB_TESTS === '1';
 const describeIfDb = skipDbTests ? describe.skip : describe;

@@ -551,7 +551,7 @@ CREATE TABLE public.cashflows (
                                   amount               NUMERIC(20,8) NOT NULL,
                                   currency             CHAR(3) NOT NULL,
                                   occurred_at          TIMESTAMPTZ NOT NULL,
-                                  note                 TEXT,
+                                  note                 TEXT
 );
 
 ALTER TABLE public.cashflows

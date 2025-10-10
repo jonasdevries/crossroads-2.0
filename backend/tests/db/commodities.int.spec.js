@@ -1,4 +1,4 @@
-import { getPool, closePool } from '../../helpers/db.js';
+import { getPool, closePool } from '../helpers/db.js';
 
 // Allow skipping DB tests via env (same pattern as fx specs)
 const skipDbTests = process.env.SKIP_DB_TESTS === '1';

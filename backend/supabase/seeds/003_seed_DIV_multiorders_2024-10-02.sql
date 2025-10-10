@@ -75,33 +75,40 @@ WITH base AS (
     WHERE u.email='jonas@good-it.be'
 )
 INSERT INTO public.transactions (
-    user_id, broker_id, location_id, asset_id, listing_id,
-    type, quantity, price, fee_amount, fee_currency, traded_at, note
+  ext_id,
+  user_id, broker_id, location_id, asset_id, listing_id,
+  type, quantity, price, fee_amount, fee_currency, traded_at, note
 )
 SELECT
-    b.user_id, b.broker_id, b.location_id, b.asset_id,
-    CASE o.mic WHEN 'XTSE' THEN b.listing_xtse_id ELSE b.listing_neoe_id END AS listing_id,
-    'buy'::public.txn_type,
-    o.qty, o.price_cad, o.fee_eur, 'EUR',
-    '2024-10-02T00:00:00Z'::timestamptz,
+    -- maak 'm uniek en voorspelbaar:
+    format(
+            'degiro-buy-%s-%s-%s-%s',
+            to_char('2024-10-02'::date,'YYYYMMDD'),
+            replace(a.unique_symbol, ' ', ''),
+            100::text,
+            2.99::text
+    ) AS ext_id,
+    u.id, b.id, l.id, a.id, li.id,
+    'buy'::txn_type,
+    100::numeric,
+    2.99::numeric,
+    0.50::numeric, 'EUR',
+    '2024-10-02 00:00:00+00'::timestamptz,
     'Seed: multi-order buy DIV'
-FROM base b
-         CROSS JOIN (
-    VALUES
-        -- mic   , qty  , price , fee (AutoFX in EUR)
-        ('XTSE',   100,  2.99 ,  0.50),
-        ('XTSE', 29200,  2.99 ,146.66),
-        ('XTSE',  2500,  2.99 , 12.56),
-        ('NEOE',  2500,  2.99 , 12.56),
-        ('XTSE',   100,  3.00 ,  0.50),
-        ('XTSE',  1000,  3.00 ,  5.04),
-        ('XTSE',   800,  3.00 ,  4.03),
-        ('XTSE',  1200,  3.00 ,  6.05),
-        ('XTSE',   100,  3.00 ,  0.50),
-        ('XTSE',  2600,  3.00 , 13.10),
-        ('XTSE',  9900,  3.00 , 49.89)
-) AS o(mic, qty, price_cad, fee_eur)
-ON CONFLICT DO NOTHING;
+FROM public.users u
+         JOIN public.brokers   b  ON b.user_id = u.id AND b.name = 'DeGiro'
+         JOIN public.locations l  ON l.user_id = u.id AND l.broker_id = b.id AND l.name = 'DeGiro - jonasdevries'
+         JOIN public.assets    a  ON a.unique_symbol = 'US4227041062'
+         JOIN public.listings  li ON li.asset_id = a.id AND li.mic = 'XNYS'
+WHERE u.email = 'jonas@good-it.be'
+    ON CONFLICT (ext_id) DO UPDATE
+                                SET quantity  = EXCLUDED.quantity,
+                                price     = EXCLUDED.price,
+                                fee_amount= EXCLUDED.fee_amount,
+                                fee_currency = EXCLUDED.fee_currency,
+                                traded_at = EXCLUDED.traded_at,
+                                note      = EXCLUDED.note;
+
 
 
 -- EUR↔CAD op 2024-10-02 16:54:32Z

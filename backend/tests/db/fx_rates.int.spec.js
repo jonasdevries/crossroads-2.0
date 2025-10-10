@@ -1,4 +1,4 @@
-import {getPool} from "../../helpers/db.js";
+import {getPool} from "../helpers/db.js";
 
 const skipFxTests = process.env.SKIP_DB_TESTS === '1';
 const describeIfFx = skipFxTests ? describe.skip : describe;
