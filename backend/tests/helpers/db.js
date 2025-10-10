@@ -1,31 +1,25 @@
-const { Pool } = require('pg');
+import pg from 'pg';
+const { Pool } = pg;
 
 let pool;
 
-const getPool = () => {
-  if (!pool) {
-    const connectionString = process.env.DATABASE_URL;
+function buildConfig() {
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error('DATABASE_URL is undefined. Set it in .env.test and ensure dotenv/config runs.');
+    const cfg = { connectionString: url };
+    const wantSsl = process.env.DATABASE_SSL === '1' || process.env.PGSSLMODE === 'require';
+    if (wantSsl) cfg.ssl = { rejectUnauthorized: false };
+    return cfg;
+}
 
-    if (!connectionString) {
-      throw new Error(
-        'DATABASE_URL is not defined. Set it in .env.test or export it before running tests.'
-      );
+export function getPool() {
+    if (!pool) {
+        pool = new Pool(buildConfig());
+        pool.on('error', (err) => console.error('[pg pool error]', err?.message || err));
     }
-
-    pool = new Pool({ connectionString });
-  }
-
-  return pool;
-};
-
-const closePool = async () => {
-  if (pool) {
-    await pool.end();
-    pool = undefined;
-  }
-};
-
-module.exports = {
-  getPool,
-  closePool
-};
+    return pool;
+}
+export async function closePool() {
+    if (pool) { await pool.end(); pool = null; }
+}
+export default { getPool, closePool };

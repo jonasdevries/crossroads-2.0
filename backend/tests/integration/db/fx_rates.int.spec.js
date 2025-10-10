@@ -1,5 +1,4 @@
-// backend/tests/fx_rates.int.spec.js
-const { getPool, closePool } = require('../../helpers/db');
+import {getPool} from "../../helpers/db.js";
 
 const skipFxTests = process.env.SKIP_DB_TESTS === '1';
 const describeIfFx = skipFxTests ? describe.skip : describe;
@@ -12,7 +11,7 @@ if (skipFxTests) {
 
 const TOLERANCE = 1e-9;
 
-describeIfFx('FX convert & latest (canonical, no triggers)', () => {
+describe('FX convert & latest (canonical, no triggers)', () => {
     const insertedTimestamps = new Set();
 
     beforeAll(async () => {

@@ -1,12 +1,12 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-The repo prioritises backend development. Focus work inside `backend/`, which hosts the Node.js entry point (`index.js`), Supabase CLI assets under `supabase/`, and dependencies. Add a `src/` subdirectory for Express route handlers and services as the API expands. Keep integration or contract tests in `backend/tests/` so operational scripts remain separate from application code.
+The repo prioritises backend development. Focus work inside `backend/`, which hosts the Node.js entry point (`server.js`), Supabase CLI assets under `supabase/`, and dependencies. Add a `src/` subdirectory for Express route handlers and services as the API expands. Keep integration or contract tests in `backend/tests/` so operational scripts remain separate from application code.
 
 ## Build, Test, and Development Commands
 - `npx supabase start` — spins up the local Supabase stack (Postgres, Studio, Auth, Storage). Requires Docker.
 - `npm run start` — launches the Node.js server for API routes.
-- `npm run dev` — hot-reloads the server using `node --watch index.js`.
+- `npm run dev` — hot-reloads the server using `node --watch server.js`.
 - `npm test` — reserved for the automated test suite; update the script once testing is configured.
 
 ## Coding Style & Naming Conventions

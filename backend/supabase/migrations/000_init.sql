@@ -464,11 +464,6 @@ ALTER TABLE public.transactions
         (type IN ('buy','sell') AND price > 0)
         );
 
--- transactions: gebruik een externe id om idempotent te seeden
-ALTER TABLE public.transactions
-    ADD COLUMN IF NOT EXISTS ext_id TEXT,
-    ADD CONSTRAINT transactions_ext_id_key UNIQUE (ext_id);
-
 -- Listing moet bij hetzelfde asset horen
 CREATE OR REPLACE FUNCTION public.txn_check_listing_asset()
     RETURNS TRIGGER AS $$
@@ -556,7 +551,7 @@ CREATE TABLE public.cashflows (
                                   amount               NUMERIC(20,8) NOT NULL,
                                   currency             CHAR(3) NOT NULL,
                                   occurred_at          TIMESTAMPTZ NOT NULL,
-                                  note                 TEXT
+                                  note                 TEXT,
 );
 
 ALTER TABLE public.cashflows

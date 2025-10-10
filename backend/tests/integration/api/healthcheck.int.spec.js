@@ -1,23 +1,17 @@
-const request = require('supertest');
-const { createServer } = require('../../../index');
+import request from 'supertest';
+import app, { shutdown as apiShutdown } from '../../../src/server.js';
 
 const skipHttpTests = process.env.SKIP_HTTP_TESTS === '1';
 const describeIfHttp = skipHttpTests ? describe.skip : describe;
 
-if (skipHttpTests) {
-  console.warn(
-    'Skipping HTTP integration specs because SKIP_HTTP_TESTS=1. Unset it to exercise the API.'
-  );
-}
+describe('HTTP healthcheck', () => {
+    it('responds with the default message', async () => {
+        const response = await request(app).get('/api/v1/health');
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(expect.objectContaining({ ok: true }));
+    });
 
-describeIfHttp('HTTP healthcheck', () => {
-  it('responds with the default message', async () => {
-    const response = await request(createServer()).get('/');
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual(
-      expect.objectContaining({
-        message: expect.stringContaining('Crossroads 2.0 backend is running')
-      })
-    );
-  });
+        afterAll(async () => {
+            await apiShutdown();
+        });
 });

@@ -1,5 +1,4 @@
-// tests/integration/db/commodities.int.spec.js
-const { getPool, closePool } = require('../../helpers/db');
+import { getPool, closePool } from '../../helpers/db.js';
 
 // Allow skipping DB tests via env (same pattern as fx specs)
 const skipDbTests = process.env.SKIP_DB_TESTS === '1';
@@ -12,7 +11,7 @@ if (skipDbTests) {
     );
 }
 
-describeIfDb('Commodities (transactions)', () => {
+describe('Commodities (transactions)', () => {
     const extIdsToCleanup = new Set();
     const tempIds = { broker: null, location: null, asset: null, listing: null };
 
