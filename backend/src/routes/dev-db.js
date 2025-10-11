@@ -19,7 +19,8 @@ router.get('/health', async (req, res) => {
     } catch (e) {
         res.status(500).json({
             ok: false,
-            error: e.message,
+            error: e?.message || e?.code || 'unknown error',
+            detail: (process.env.NODE_ENV !== 'production') ? String(e) : undefined,
             hint: 'Controleer DATABASE_URL en of Supabase local draait: npx supabase start',
         });
     }

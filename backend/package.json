@@ -5,7 +5,7 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development nodemon src/server.js --env-file .env.local",
+    "dev": "NODE_ENV=dev nodemon src/server.js --env-file=.env.dev",
     "test": "cross-env NODE_ENV=test DOTENV_CONFIG_PATH=.env.test NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
     "test:it": "cross-env NODE_ENV=test DOTENV_CONFIG_PATH=.env.test NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/integration",
     "test:unit": "cross-env NODE_ENV=test DOTENV_CONFIG_PATH=.env.test NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/unit",

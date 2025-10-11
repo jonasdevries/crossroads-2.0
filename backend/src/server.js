@@ -1,4 +1,7 @@
 import express from 'express';
+import dotenv from 'dotenv';
+
+
 import devDbRoutes from './routes/dev-db.js';
 import transactions from './routes/transactions.js';
 import cashflows from './routes/cashflows.js';
@@ -9,6 +12,7 @@ import { close as closeDb } from './lib/db.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
+dotenv.config();
 // app.use(helmet());
 // app.use(cors());
 // app.use(compression());

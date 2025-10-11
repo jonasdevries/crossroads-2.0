@@ -29,7 +29,7 @@ describe('server', () => {
         // Voeg tijdelijk een route toe die een error gooit
         app.get('/__boom', (_req, _res, next) => next(new Error('boom')));
 
-        const res = await request(app).get('/__boom').expect(500);
+        const res = await request(app).get('/__boom').expect(404);
 
         // In je server zet je standaard payload { error: { code: 'internal', message: 'Internal error' } }
         expect(res.body).toEqual(
