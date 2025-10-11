@@ -1,0 +1,40 @@
+name: Supabase DB
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "backend/supabase/migrations/**"
+      - "backend/supabase/seeds/**"
+      - "backend/supabase/config.toml"
+
+jobs:
+  db:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: npx supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Push migrations to cloud
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: npx supabase db push
+
+      # ⚠️ Alleen in develop/dev omgeving seeden (reset wist data!)
+      - name: Seed remote (develop only)
+        if: github.ref == 'refs/heads/develop'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: npx supabase db reset --remote --db-url "$SUPABASE_DB_URL"
