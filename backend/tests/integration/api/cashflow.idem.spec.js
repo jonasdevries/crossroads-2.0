@@ -7,6 +7,8 @@ afterAll(async () => {
     await apiShutdown(); // sluit de API-PG pool
 });
 
+// TODO refactor deze test: niet alleen met api werken en niet met db data
+
 describe('API idempotency — /cashflows', () => {
     let user_id, account_location_id;
 
@@ -24,7 +26,6 @@ describe('API idempotency — /cashflows', () => {
         account_location_id = l[0].id;
     });
 
-    afterAll(async () => { await closePool(); });
     afterAll(async () => {
         await closePool();
         await apiShutdown();

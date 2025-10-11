@@ -5,7 +5,8 @@ import dotenv from 'dotenv';
 import devDbRoutes from './routes/dev-db.js';
 import transactions from './routes/transactions.js';
 import cashflows from './routes/cashflows.js';
-import { close as closeDb } from './lib/db.js';
+import { close as closeDb } from './lib/pool.js';
+
 // import helmet from 'helmet';    // optional
 // import cors from 'cors';        // optional
 // import compression from 'compression'; // optional

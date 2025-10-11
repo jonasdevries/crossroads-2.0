@@ -2,6 +2,8 @@ import request from 'supertest';
 import app, { shutdown as apiShutdown } from '../../../src/server.js';
 import { getPool, closePool } from '../../helpers/db.js';
 
+// TODO refactor deze test: niet alleen met api werken en niet met db data
+
 describe('API idempotency — /transactions', () => {
     let ctx;
 
@@ -25,7 +27,7 @@ describe('API idempotency — /transactions', () => {
 
     afterAll(async () => {
         await closePool();      // test-helper pool
-        await apiShutdown();    // API-pool (sluit PG pool uit src/lib/db.js)
+        await apiShutdown();    // API-pool (sluit PG pool uit src/lib/pool.js)
     });
 
     it('POST /transactions is idempotent via Idempotency-Key', async () => {

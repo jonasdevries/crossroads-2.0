@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { query } from '../lib/db.js';
-import { apiError, pgToApiError } from '../lib/errors.js';
+import { query } from '../lib/pool.js';
+import { apiError, pgToApiError } from '../lib/pg-to-api-error.js';
 
 const router = Router();
 
