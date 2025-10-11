@@ -7,7 +7,7 @@ import express from 'express';
 import request from 'supertest';
 import { jest } from '@jest/globals';
 
-import devDbRouter from '../../src/routes/devDb.js';
+import devDbRouter from '../../src/routes/dev-db.js';
 import { pool } from '../../src/db/pool.js';
 
 const skip = process.env.SKIP_DB_TESTS === '1';
