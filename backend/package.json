@@ -8,6 +8,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "cross-env NODE_ENV=test DOTENV_CONFIG_PATH=.env.test NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
+    "test:unit": "cross-env NODE_ENV=test DOTENV_CONFIG_PATH=.env.test NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/unit",
     "test:db": "cross-env NODE_ENV=test DOTENV_CONFIG_PATH=.env.test NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/db"
   },
   "keywords": [],
